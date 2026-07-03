@@ -1,3 +1,57 @@
 <resources>
     <string name="app_name">SyncUp</string>
+
+    <string name="home_title">Your files, back home.</string>
+    <string name="home_subtitle">Choose what matters. SyncUp will keep it on your own computer over Wi-Fi.</string>
+    <string name="server_title">Backup server</string>
+    <string name="server_status_planned">Connection coming next</string>
+    <string name="server_status_explanation">Your preset is stored locally. Server discovery and transfer will be connected in the next client slice.</string>
+    <string name="default_preset_title">DEFAULT BACKUP</string>
+    <string name="configure_backup">Configure backup</string>
+    <string name="back_up_now">Back up now</string>
+    <string name="backup_disabled_hint">Back up becomes available after server discovery is implemented.</string>
+    <string name="preset_load_failed">Could not load your backup preset.</string>
+    <string name="preset_summary_format">%1$s · %2$s · %3$s</string>
+
+    <string name="config_title">Backup configuration</string>
+    <string name="preset_name">Preset name</string>
+    <string name="sources_title">Sources</string>
+    <string name="source_media_library">Phone photo and video library</string>
+    <string name="source_media_library_description">Uses Android’s media library. Permission will be requested when scanning starts.</string>
+    <string name="source_custom_folder">Custom folder</string>
+    <string name="no_folder_selected">No folder selected</string>
+    <string name="choose_folder">Choose folder</string>
+    <string name="remove">Remove</string>
+    <string name="file_types_title">File types</string>
+    <string name="file_type_images">Images</string>
+    <string name="file_type_videos">Videos</string>
+    <string name="file_type_documents">Documents from the selected folder</string>
+    <string name="date_filter_title">Date</string>
+    <string name="date_today">Today</string>
+    <string name="date_yesterday">Yesterday</string>
+    <string name="date_last_7_days">Last 7 days</string>
+    <string name="date_custom">Custom range</string>
+    <string name="date_all">All dates</string>
+    <string name="date_from">From</string>
+    <string name="date_to">To</string>
+    <string name="date_button_format">From\n%1$s</string>
+    <string name="date_to_button_format">To\n%1$s</string>
+    <string name="save_default_preset">Save as default</string>
+    <string name="preset_saved">Default backup saved.</string>
+    <string name="preset_save_failed">Could not save the backup preset.</string>
+    <string name="folder_permission_failed">SyncUp could not keep access to that folder.</string>
+
+    <string name="error_name_required">Enter a name for this preset.</string>
+    <string name="error_source_required">Choose the phone library or a custom folder.</string>
+    <string name="error_file_type_required">Choose at least one file type.</string>
+    <string name="error_document_folder_required">Choose a custom folder to include documents.</string>
+    <string name="error_custom_dates_required">Choose both dates for the custom range.</string>
+    <string name="error_custom_date_order">The end date cannot be before the start date.</string>
+
+    <string name="summary_images">Images</string>
+    <string name="summary_videos">Videos</string>
+    <string name="summary_documents">Documents</string>
+    <string name="summary_media_library">Phone library</string>
+    <string name="summary_custom_folder">Custom folder</string>
+    <string name="summary_both_sources">Phone library + folder</string>
 </resources>
