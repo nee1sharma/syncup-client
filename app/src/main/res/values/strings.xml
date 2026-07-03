@@ -7,7 +7,7 @@
     <string name="server_status_planned">Searching…</string>
     <string name="server_status_explanation">Looking for a SyncUp server on this Wi-Fi network.</string>
     <string name="server_status_connected">Connected</string>
-    <string name="server_status_connected_to">Connected to %1$s\n%2$s</string>
+    <string name="server_status_connected_to">Connected to %1$s (%2$s)</string>
     <string name="server_status_unavailable">Server not found</string>
     <string name="server_status_unavailable_explanation">Start the SyncUp server on a computer connected to the same Wi-Fi, then try again.</string>
     <string name="server_try_again">Try again</string>
@@ -21,7 +21,15 @@
     <string name="configure_backup">Configure backup</string>
     <string name="back_up_now">Back up now</string>
     <string name="backup_starting">Starting backup…</string>
-    <string name="backup_disabled_hint">File scanning and upload are the next implementation step.</string>
+    <string name="backup_progress_running">Backup in progress</string>
+    <string name="backup_files_count_format">%1$d of %2$d files sent</string>
+    <string name="backup_total_sent_format">Total sent: %1$s</string>
+    <string name="backup_status_scanning">Scanning files…</string>
+    <string name="backup_status_running">Backing up…</string>
+    <string name="backup_complete">Backup complete!</string>
+    <string name="backup_failed">Backup failed: %1$s</string>
+    <string name="backup_cancelled">Backup cancelled</string>
+    <string name="backup_disabled_hint">Scan for files and start your backup to the server.</string>
     <string name="preset_load_failed">Could not load your backup preset.</string>
     <string name="preset_summary_format">%1$s · %2$s · %3$s</string>
 
@@ -66,4 +74,5 @@
     <string name="summary_media_library">Phone library</string>
     <string name="summary_custom_folder">Custom folder</string>
     <string name="summary_both_sources">Phone library + folder</string>
+    <string name="app_version_format">Version %1$s</string>
 </resources>

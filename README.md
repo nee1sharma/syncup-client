@@ -19,11 +19,13 @@ Implemented:
 - Custom folder, file-type, and date selection
 - Automatic LAN server discovery and identity verification
 - Cached reconnect, retry, and manual server address
+- Local MediaStore file scanning
+- Streaming, resumable file upload with SHA-256 verification
 
 Next:
 
-- Scan selected files
-- Upload, resume, and restore files
+- Multi-device pairing and PIN authentication
+- Restore browser and file downloading
 
 ## Build
 
@@ -54,9 +56,9 @@ Generate an upload keystore once:
 
 ```bash
 keytool -genkeypair -v \
-  -keystore syncup-upload.jks \
+  -keystore syncup.syncup.syncup-upload.jks \
   -storetype PKCS12 \
-  -alias syncup \
+  -alias syncup.syncup.syncup \
   -keyalg RSA \
   -keysize 2048 \
   -validity 10000

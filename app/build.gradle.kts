@@ -42,7 +42,7 @@ base {
 }
 
 android {
-    namespace = "com.hitstudio.syncup"
+    namespace = "com.hitstudio.syncup.client"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -50,7 +50,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.hitstudio.syncup"
+        applicationId = "com.hitstudio.syncup.client"
         minSdk = 34
         targetSdk = 36
         versionCode = appVersionCode

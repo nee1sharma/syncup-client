@@ -1,0 +1,436 @@
+package com.hitstudio.syncup.client.data.repository;
+
+import android.content.ContentUris;
+import android.content.Context;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.MediaStore;
+
+import com.hitstudio.syncup.client.data.local.DeviceSettings;
+import com.hitstudio.syncup.client.domain.model.BackupPreset;
+import com.hitstudio.syncup.client.domain.model.DateRange;
+import com.hitstudio.syncup.client.domain.model.LocalFile;
+import com.hitstudio.syncup.client.domain.usecase.DateRangeCalculator;
+import com.hitstudio.syncup.client.network.discovery.ServerInfo;
+import com.hitstudio.syncup.client.ui.util.Sha256;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
+
+import okhttp3.HttpUrl;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okio.BufferedSink;
+
+public final class BackupRepository {
+
+    public interface Callback {
+        void onScanningStarted();
+        void onProgress(int filesSent, int totalFiles, String currentFile, long currentFileSent, long currentFileTotal, double speedMbps, long totalSentBytes);
+        void onComplete();
+        void onError(Throwable error);
+        void onCancelled();
+    }
+
+    private static volatile BackupRepository instance;
+    private final Context context;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final AtomicBoolean isCancelled = new AtomicBoolean(false);
+    private final DeviceSettings deviceSettings;
+    private final OkHttpClient httpClient;
+
+    private BackupRepository(Context context) {
+        this.context = context.getApplicationContext();
+        this.deviceSettings = new DeviceSettings(this.context);
+        this.httpClient = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .writeTimeout(0, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .build();
+    }
+
+    public static BackupRepository getInstance(Context context) {
+        if (instance == null) {
+            synchronized (BackupRepository.class) {
+                if (instance == null) {
+                    instance = new BackupRepository(context);
+                }
+            }
+        }
+        return instance;
+    }
+
+    public void startBackup(BackupPreset preset, ServerInfo server, Callback callback) {
+        isCancelled.set(false);
+        executor.execute(() -> {
+            try {
+                postScanningStarted(callback);
+                List<LocalFile> files = scanFiles(preset);
+                
+                if (isCancelled.get()) {
+                    postCancelled(callback);
+                    return;
+                }
+
+                if (files.isEmpty()) {
+                    postComplete(callback);
+                    return;
+                }
+
+                performBackup(files, server, callback);
+            } catch (Exception e) {
+                postError(callback, e);
+            }
+        });
+    }
+
+    private void performBackup(List<LocalFile> files, ServerInfo server, Callback callback) throws IOException, JSONException {
+        String baseUrl = server.getBaseUrl();
+        String deviceId = deviceSettings.getDeviceId();
+        String deviceName = android.os.Build.MODEL;
+        String idempotencyKey = UUID.randomUUID().toString();
+
+        // 1. Create a backup run
+        JSONObject runRequest = new JSONObject()
+                .put("deviceId", deviceId)
+                .put("deviceName", deviceName)
+                .put("idempotencyKey", idempotencyKey);
+
+        HttpUrl backupsUrl = HttpUrl.get(baseUrl).newBuilder()
+                .addPathSegment("backups")
+                .build();
+
+        Request postRun = new Request.Builder()
+                .url(backupsUrl)
+                .header("Idempotency-Key", idempotencyKey)
+                .post(RequestBody.create(runRequest.toString(), MediaType.parse("application/json")))
+                .build();
+
+        String runId;
+        try (Response response = httpClient.newCall(postRun).execute()) {
+            String body = response.body() != null ? response.body().string() : "";
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to create backup run (" + response.code() + "): " + body);
+            }
+            JSONObject json = new JSONObject(body);
+            runId = json.getString("runId");
+        }
+
+        // 2. Submit manifest
+        JSONArray manifest = new JSONArray();
+        Map<String, LocalFile> fileMap = new HashMap<>();
+
+        for (LocalFile file : files) {
+            if (isCancelled.get()) {
+                postCancelled(callback);
+                return;
+            }
+            
+            String sha256;
+            try (InputStream is = context.getContentResolver().openInputStream(file.getUri())) {
+                sha256 = Sha256.calculate(is);
+            }
+
+            JSONObject entry = new JSONObject()
+                    .put("clientFileKey", file.getClientFileKey())
+                    .put("displayName", file.getDisplayName())
+                    .put("relativePath", file.getRelativePath())
+                    .put("mediaType", file.getMediaType())
+                    .put("mimeType", file.getMimeType())
+                    .put("sizeBytes", file.getSizeBytes())
+                    .put("modifiedAt", Instant.ofEpochMilli(file.getModifiedAtEpochMillis()).toString())
+                    .put("capturedAt", Instant.ofEpochMilli(file.getCapturedAtEpochMillis()).toString())
+                    .put("sha256", sha256);
+            
+            manifest.put(entry);
+            fileMap.put(file.getClientFileKey(), file);
+        }
+
+        JSONObject batchRequest = new JSONObject().put("entries", manifest);
+        HttpUrl manifestUrl = HttpUrl.get(baseUrl).newBuilder()
+                .addPathSegment("backups")
+                .addPathSegment(runId)
+                .addPathSegment("manifest-batches")
+                .build();
+
+        Request postBatch = new Request.Builder()
+                .url(manifestUrl)
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .header("Device-ID", deviceId)
+                .post(RequestBody.create(batchRequest.toString(), MediaType.parse("application/json")))
+                .build();
+
+        try (Response response = httpClient.newCall(postBatch).execute()) {
+            if (!response.isSuccessful()) {
+                String errorBody = "No error body";
+                if (response.body() != null) {
+                    errorBody = response.body().string();
+                }
+                throw new IOException("Failed to submit manifest (" + response.code() + ") at URL: " + manifestUrl + " | Response: " + errorBody);
+            }
+        }
+
+        // 3. Get the plan
+        HttpUrl planUrl = HttpUrl.get(baseUrl).newBuilder()
+                .addPathSegment("backups")
+                .addPathSegment(runId)
+                .addPathSegment("plan")
+                .build();
+
+        Request postPlan = new Request.Builder()
+                .url(planUrl)
+                .post(RequestBody.create("", null))
+                .build();
+
+        JSONArray planEntries;
+        try (Response response = httpClient.newCall(postPlan).execute()) {
+            if (!response.isSuccessful()) throw new IOException("Failed to get backup plan: " + response.code());
+            JSONObject json = new JSONObject(response.body().string());
+            planEntries = json.getJSONArray("dispositions");
+        }
+
+        // 4. Upload missing files
+        List<JSONObject> uploads = new ArrayList<>();
+        for (int i = 0; i < planEntries.length(); i++) {
+            JSONObject entry = planEntries.getJSONObject(i);
+            String disposition = entry.getString("disposition");
+            if ("UPLOAD".equals(disposition) || "RESUME".equals(disposition)) {
+                uploads.add(entry);
+            }
+        }
+        
+        int totalFilesCount = uploads.size();
+        long totalSentBytes = 0;
+
+        for (int i = 0; i < uploads.size(); i++) {
+            if (isCancelled.get()) {
+                postCancelled(callback);
+                return;
+            }
+
+            JSONObject entry = uploads.get(i);
+            String clientFileKey = entry.getString("clientFileKey");
+            String transferId = entry.getString("transferId");
+            long offset = entry.optLong("acceptedOffset", 0);
+            LocalFile file = fileMap.get(clientFileKey);
+
+            if (file != null) {
+                uploadFile(file, transferId, baseUrl, i, totalFilesCount, totalSentBytes, offset, callback);
+                totalSentBytes += file.getSizeBytes();
+            }
+        }
+
+        // 5. Complete
+        HttpUrl completeUrl = HttpUrl.get(baseUrl).newBuilder()
+                .addPathSegment("backups")
+                .addPathSegment(runId)
+                .addPathSegment("complete")
+                .build();
+
+        Request postComplete = new Request.Builder()
+                .url(completeUrl)
+                .post(RequestBody.create("", null))
+                .build();
+
+        try (Response response = httpClient.newCall(postComplete).execute()) {
+            if (!response.isSuccessful()) throw new IOException("Failed to complete backup: " + response.code());
+        }
+
+        postComplete(callback);
+    }
+
+    private void uploadFile(LocalFile file, String transferId, String baseUrl, int index, int totalFiles, long totalSentSoFar, long startOffset, Callback callback) throws IOException {
+        long startTime = System.currentTimeMillis();
+        
+        HttpUrl contentUrl = HttpUrl.get(baseUrl).newBuilder()
+                .addPathSegment("transfers")
+                .addPathSegment(transferId)
+                .addPathSegment("content")
+                .build();
+
+        Request putContent = new Request.Builder()
+                .url(contentUrl)
+                .put(new ProgressRequestBody(context, file.getUri(), file.getSizeBytes(), startOffset, (sent, total) -> {
+                    long now = System.currentTimeMillis();
+                    double durationSec = (now - startTime) / 1000.0;
+                    double speedMbps = durationSec > 0 ? (sent * 8.0 / (1024 * 1024)) / durationSec : 0;
+                    postProgress(callback, index + 1, totalFiles, file.getDisplayName(), sent, total, speedMbps, totalSentSoFar + sent);
+                }))
+                .header("Upload-Offset", String.valueOf(startOffset))
+                .build();
+
+        try (Response response = httpClient.newCall(putContent).execute()) {
+            if (!response.isSuccessful()) throw new IOException("Failed to upload " + file.getDisplayName() + ": " + response.code());
+        }
+    }
+
+    public void cancel() {
+        isCancelled.set(true);
+    }
+
+    private List<LocalFile> scanFiles(BackupPreset preset) {
+        List<LocalFile> allFiles = new ArrayList<>();
+        DateRange dateRange = DateRangeCalculator.calculate(
+                preset.getDateFilterMode(),
+                preset.getCustomFrom(),
+                preset.getCustomTo(),
+                ZoneId.systemDefault(),
+                Clock.systemDefaultZone()
+        );
+
+        if (preset.isMediaStoreSource()) {
+            if (preset.includesImages()) {
+                allFiles.addAll(queryMediaStore(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "IMAGE", dateRange));
+            }
+            if (preset.includesVideos()) {
+                allFiles.addAll(queryMediaStore(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "VIDEO", dateRange));
+            }
+        }
+        
+        return allFiles;
+    }
+
+    private List<LocalFile> queryMediaStore(Uri collection, String mediaType, DateRange dateRange) {
+        List<LocalFile> files = new ArrayList<>();
+        String[] projection = new String[]{
+                MediaStore.MediaColumns._ID,
+                MediaStore.MediaColumns.DISPLAY_NAME,
+                MediaStore.MediaColumns.RELATIVE_PATH,
+                MediaStore.MediaColumns.MIME_TYPE,
+                MediaStore.MediaColumns.SIZE,
+                MediaStore.MediaColumns.DATE_MODIFIED,
+                MediaStore.MediaColumns.DATE_ADDED
+        };
+
+        String selection = null;
+        List<String> selectionArgs = new ArrayList<>();
+
+        if (dateRange != null) {
+            selection = MediaStore.MediaColumns.DATE_ADDED + " >= ? AND " + MediaStore.MediaColumns.DATE_ADDED + " < ?";
+            selectionArgs.add(String.valueOf(dateRange.getFromInclusive().getEpochSecond()));
+            selectionArgs.add(String.valueOf(dateRange.getToExclusive().getEpochSecond()));
+        }
+
+        try (Cursor cursor = context.getContentResolver().query(
+                collection,
+                projection,
+                selection,
+                selectionArgs.isEmpty() ? null : selectionArgs.toArray(new String[0]),
+                MediaStore.MediaColumns.DATE_ADDED + " DESC"
+        )) {
+            if (cursor != null) {
+                int idColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID);
+                int nameColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME);
+                int pathColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH);
+                int mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE);
+                int sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE);
+                int modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_MODIFIED);
+                int addedColumn = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED);
+
+                while (cursor.moveToNext()) {
+                    long id = cursor.getLong(idColumn);
+                    Uri contentUri = ContentUris.withAppendedId(collection, id);
+                    String name = cursor.getString(nameColumn);
+                    String path = cursor.getString(pathColumn);
+                    String mime = cursor.getString(mimeColumn);
+                    long size = cursor.getLong(sizeColumn);
+                    long modified = cursor.getLong(modifiedColumn) * 1000;
+                    long added = cursor.getLong(addedColumn) * 1000;
+
+                    String key = mediaType + "_" + id;
+
+                    files.add(new LocalFile(key, contentUri, name, path, mediaType, mime, size, modified, added));
+                }
+            }
+        }
+        return files;
+    }
+
+    private void postScanningStarted(Callback callback) {
+        mainHandler.post(callback::onScanningStarted);
+    }
+
+    private void postProgress(Callback callback, int filesSent, int totalFiles, String currentFile, long currentFileSent, long currentFileTotal, double speedMbps, long totalSentBytes) {
+        mainHandler.post(() -> callback.onProgress(filesSent, totalFiles, currentFile, currentFileSent, currentFileTotal, speedMbps, totalSentBytes));
+    }
+
+    private void postComplete(Callback callback) {
+        mainHandler.post(callback::onComplete);
+    }
+
+    private void postError(Callback callback, Throwable error) {
+        mainHandler.post(() -> callback.onError(error));
+    }
+
+    private void postCancelled(Callback callback) {
+        mainHandler.post(callback::onCancelled);
+    }
+
+    private static final class ProgressRequestBody extends RequestBody {
+        private final Context context;
+        private final Uri uri;
+        private final long size;
+        private final long startOffset;
+        private final BiConsumer<Long, Long> listener;
+
+        ProgressRequestBody(Context context, Uri uri, long size, long startOffset, BiConsumer<Long, Long> listener) {
+            this.context = context;
+            this.uri = uri;
+            this.size = size;
+            this.startOffset = startOffset;
+            this.listener = listener;
+        }
+
+        @Override
+        public MediaType contentType() {
+            return MediaType.parse("application/octet-stream");
+        }
+
+        @Override
+        public long contentLength() {
+            return size - startOffset;
+        }
+
+        @Override
+        public void writeTo(BufferedSink sink) throws IOException {
+            try (InputStream is = context.getContentResolver().openInputStream(uri)) {
+                if (is == null) throw new IOException("Could not open input stream for " + uri);
+                if (startOffset > 0) {
+                    long skipped = is.skip(startOffset);
+                    if (skipped < startOffset) throw new IOException("Could not skip " + startOffset + " bytes");
+                }
+                byte[] buffer = new byte[8192];
+                int read;
+                long sent = startOffset;
+                while ((read = is.read(buffer)) != -1) {
+                    sink.write(buffer, 0, read);
+                    sent += read;
+                    listener.accept(sent, size);
+                }
+            }
+        }
+    }
+}
