@@ -17,11 +17,12 @@ Implemented:
 - Android home and configuration screens
 - Room-backed default presets
 - Custom folder, file-type, and date selection
+- Automatic LAN server discovery and identity verification
+- Cached reconnect, retry, and manual server address
 
 Next:
 
 - Scan selected files
-- Discover and pair with the server
 - Upload, resume, and restore files
 
 ## Build
@@ -64,14 +65,16 @@ keytool -genkeypair -v \
 Update `keystore.properties` with the real passwords, then build:
 
 ```bash
-# First update versionCode and versionName in app/build.gradle.kts
-
 # Signed APK for local distribution
 ./gradlew assembleRelease
 
-# Signed App Bundle for Google Play
+# Signed App Bundle for Google Play.
+# This increments VERSION_CODE in version.properties automatically.
 ./gradlew bundleRelease
 ```
+
+Commit the updated `version.properties` after creating a release bundle. The
+displayed version is `<VERSION_NAME>.<VERSION_CODE>`, for example `1.0.2`.
 
 Artifacts:
 
@@ -90,3 +93,9 @@ apksigner verify --print-certs \
 ```
 
 `keystore.properties` and keystore files are ignored by Git. Back them up securely; future updates must use the same signing identity.
+
+When testing a new build directly on a phone, reinstall it:
+
+```bash
+adb install -r app/build/outputs/apk/debug/SyncUp-debug.apk
+```

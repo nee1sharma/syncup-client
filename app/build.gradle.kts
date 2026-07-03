@@ -16,6 +16,27 @@ fun releaseProperty(name: String): String =
         ?.takeIf { it.isNotBlank() }
         ?: error("Missing '$name' in keystore.properties")
 
+val versionFile = rootProject.file("version.properties")
+val versionProperties = Properties().apply {
+    versionFile.inputStream().use(::load)
+}
+val releaseBundleRequested = gradle.startParameter.taskNames.any {
+    it.substringAfterLast(':').equals("bundleRelease", ignoreCase = true)
+}
+var appVersionCode = versionProperties.getProperty("VERSION_CODE")?.toIntOrNull()
+    ?: error("VERSION_CODE in version.properties must be an integer")
+val appVersionName = versionProperties.getProperty("VERSION_NAME")
+    ?.takeIf { it.isNotBlank() }
+    ?: error("VERSION_NAME is missing from version.properties")
+
+if (releaseBundleRequested) {
+    appVersionCode += 1
+    versionFile.writeText(
+        "VERSION_CODE=$appVersionCode\n" +
+            "VERSION_NAME=$appVersionName\n"
+    )
+}
+
 base {
     archivesName.set("SyncUp")
 }
@@ -32,8 +53,8 @@ android {
         applicationId = "com.hitstudio.syncup"
         minSdk = 34
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = "$appVersionName.$appVersionCode"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -68,6 +89,7 @@ dependencies {
     implementation(libs.appcompat)
     implementation(libs.constraintlayout)
     implementation(libs.material)
+    implementation(libs.okhttp)
     implementation(libs.room.runtime)
     annotationProcessor(libs.room.compiler)
     testImplementation(libs.junit)
