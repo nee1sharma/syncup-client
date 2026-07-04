@@ -70,6 +70,9 @@ Update `keystore.properties` with the real passwords, then build:
 # Signed APK for local distribution
 ./gradlew assembleRelease
 
+# Install the release APK on a connected device
+./gradlew installRelease
+
 # Signed App Bundle for Google Play.
 # This increments VERSION_CODE in version.properties automatically.
 ./gradlew bundleRelease
@@ -96,8 +99,14 @@ apksigner verify --print-certs \
 
 `keystore.properties` and keystore files are ignored by Git. Back them up securely; future updates must use the same signing identity.
 
-When testing a new build directly on a phone, reinstall it:
+When testing a new build directly on a phone, you can also use `adb`:
 
 ```bash
+# Debug APK
 adb install -r app/build/outputs/apk/debug/SyncUp-debug.apk
+
+# Release APK
+adb install -r app/build/outputs/apk/release/SyncUp-release.apk
 ```
+
+> **Note:** If you switch between Debug and Release builds, you may see `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. You must uninstall the existing app from the device first: `adb uninstall com.hitstudio.syncup.client`.

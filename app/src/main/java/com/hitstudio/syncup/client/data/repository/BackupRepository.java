@@ -6,6 +6,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 
 import com.hitstudio.syncup.client.data.local.DeviceSettings;
@@ -14,6 +15,7 @@ import com.hitstudio.syncup.client.domain.model.DateRange;
 import com.hitstudio.syncup.client.domain.model.LocalFile;
 import com.hitstudio.syncup.client.domain.usecase.DateRangeCalculator;
 import com.hitstudio.syncup.client.network.discovery.ServerInfo;
+import com.hitstudio.syncup.client.ui.util.DebugLog;
 import com.hitstudio.syncup.client.ui.util.Sha256;
 
 import org.json.JSONArray;
@@ -45,6 +47,12 @@ import okhttp3.Response;
 import okio.BufferedSink;
 
 public final class BackupRepository {
+
+    private static final String[] MANIFEST_BATCH_PATHS = {
+            "manifest-batches",
+            "manifest-batch",
+            "manifest"
+    };
 
     public interface Callback {
         void onScanningStarted();
@@ -85,10 +93,12 @@ public final class BackupRepository {
 
     public void startBackup(BackupPreset preset, ServerInfo server, Callback callback) {
         isCancelled.set(false);
+        DebugLog.i(context, "Backup requested for server " + server.getBaseUrl());
         executor.execute(() -> {
             try {
                 postScanningStarted(callback);
                 List<LocalFile> files = scanFiles(preset);
+                DebugLog.i(context, "Scan completed with " + files.size() + " candidate files");
                 
                 if (isCancelled.get()) {
                     postCancelled(callback);
@@ -123,6 +133,8 @@ public final class BackupRepository {
                 .addPathSegment("backups")
                 .build();
 
+        DebugLog.i(context, "Starting backup run against " + backupsUrl + " for device " + deviceName);
+
         Request postRun = new Request.Builder()
                 .url(backupsUrl)
                 .header("Idempotency-Key", idempotencyKey)
@@ -132,6 +144,7 @@ public final class BackupRepository {
         String runId;
         try (Response response = httpClient.newCall(postRun).execute()) {
             String body = response.body() != null ? response.body().string() : "";
+            DebugLog.d(context, "Create run response " + response.code() + " from " + backupsUrl + ": " + body);
             if (!response.isSuccessful()) {
                 throw new IOException("Failed to create backup run (" + response.code() + "): " + body);
             }
@@ -157,70 +170,42 @@ public final class BackupRepository {
             JSONObject entry = new JSONObject()
                     .put("clientFileKey", file.getClientFileKey())
                     .put("displayName", file.getDisplayName())
-                    .put("relativePath", file.getRelativePath())
-                    .put("mediaType", file.getMediaType())
-                    .put("mimeType", file.getMimeType())
                     .put("sizeBytes", file.getSizeBytes())
                     .put("modifiedAt", Instant.ofEpochMilli(file.getModifiedAtEpochMillis()).toString())
                     .put("capturedAt", Instant.ofEpochMilli(file.getCapturedAtEpochMillis()).toString())
                     .put("sha256", sha256);
+            putIfPresent(entry, "relativePath", file.getRelativePath());
+            putIfPresent(entry, "mediaType", file.getMediaType());
+            putIfPresent(entry, "mimeType", file.getMimeType());
             
             manifest.put(entry);
             fileMap.put(file.getClientFileKey(), file);
         }
 
-        JSONObject batchRequest = new JSONObject().put("entries", manifest);
-        HttpUrl manifestUrl = HttpUrl.get(baseUrl).newBuilder()
-                .addPathSegment("backups")
-                .addPathSegment(runId)
-                .addPathSegment("manifest-batches")
-                .build();
+        JSONObject batchRequest = new JSONObject()
+                .put("deviceId", deviceId)
+                .put("deviceName", deviceName)
+                .put("files", manifest);
+        DebugLog.d(context, "Manifest payload: " + batchRequest.toString());
+        JSONArray planEntries = submitManifestBatch(baseUrl, runId, deviceId, batchRequest);
 
-        Request postBatch = new Request.Builder()
-                .url(manifestUrl)
-                .header("Idempotency-Key", UUID.randomUUID().toString())
-                .header("Device-ID", deviceId)
-                .post(RequestBody.create(batchRequest.toString(), MediaType.parse("application/json")))
-                .build();
-
-        try (Response response = httpClient.newCall(postBatch).execute()) {
-            if (!response.isSuccessful()) {
-                String errorBody = "No error body";
-                if (response.body() != null) {
-                    errorBody = response.body().string();
-                }
-                throw new IOException("Failed to submit manifest (" + response.code() + ") at URL: " + manifestUrl + " | Response: " + errorBody);
-            }
-        }
-
-        // 3. Get the plan
-        HttpUrl planUrl = HttpUrl.get(baseUrl).newBuilder()
-                .addPathSegment("backups")
-                .addPathSegment(runId)
-                .addPathSegment("plan")
-                .build();
-
-        Request postPlan = new Request.Builder()
-                .url(planUrl)
-                .post(RequestBody.create("", null))
-                .build();
-
-        JSONArray planEntries;
-        try (Response response = httpClient.newCall(postPlan).execute()) {
-            if (!response.isSuccessful()) throw new IOException("Failed to get backup plan: " + response.code());
-            JSONObject json = new JSONObject(response.body().string());
-            planEntries = json.getJSONArray("dispositions");
-        }
-
-        // 4. Upload missing files
+        // 3. Upload missing files
         List<JSONObject> uploads = new ArrayList<>();
+        int presentCount = 0;
+        int resumeCount = 0;
         for (int i = 0; i < planEntries.length(); i++) {
             JSONObject entry = planEntries.getJSONObject(i);
             String disposition = entry.getString("disposition");
+            if ("PRESENT".equals(disposition)) {
+                presentCount++;
+            } else if ("RESUME".equals(disposition)) {
+                resumeCount++;
+            }
             if ("UPLOAD".equals(disposition) || "RESUME".equals(disposition)) {
                 uploads.add(entry);
             }
         }
+        DebugLog.i(context, "Manifest plan: " + uploads.size() + " uploads, " + resumeCount + " resumes, " + presentCount + " already present");
         
         int totalFilesCount = uploads.size();
         long totalSentBytes = 0;
@@ -234,35 +219,41 @@ public final class BackupRepository {
             JSONObject entry = uploads.get(i);
             String clientFileKey = entry.getString("clientFileKey");
             String transferId = entry.getString("transferId");
-            long offset = entry.optLong("acceptedOffset", 0);
+            long offset = entry.optLong("uploadOffset", 0);
             LocalFile file = fileMap.get(clientFileKey);
 
             if (file != null) {
-                uploadFile(file, transferId, baseUrl, i, totalFilesCount, totalSentBytes, offset, callback);
+                uploadFile(file, transferId, deviceName, runId, baseUrl, i, totalFilesCount, totalSentBytes, offset, callback);
                 totalSentBytes += file.getSizeBytes();
             }
         }
 
-        // 5. Complete
+        // 4. Complete
         HttpUrl completeUrl = HttpUrl.get(baseUrl).newBuilder()
                 .addPathSegment("backups")
                 .addPathSegment(runId)
                 .addPathSegment("complete")
                 .build();
 
+        JSONObject completeRequest = new JSONObject()
+                .put("deviceId", deviceId)
+                .put("deviceName", deviceName);
         Request postComplete = new Request.Builder()
                 .url(completeUrl)
-                .post(RequestBody.create("", null))
+                .post(RequestBody.create(completeRequest.toString(), MediaType.parse("application/json")))
                 .build();
 
         try (Response response = httpClient.newCall(postComplete).execute()) {
-            if (!response.isSuccessful()) throw new IOException("Failed to complete backup: " + response.code());
+            if (!response.isSuccessful()) {
+                String errorBody = response.body() != null ? response.body().string() : "No error body";
+                throw new IOException("Failed to complete backup: " + response.code() + " | Response: " + errorBody);
+            }
         }
 
         postComplete(callback);
     }
 
-    private void uploadFile(LocalFile file, String transferId, String baseUrl, int index, int totalFiles, long totalSentSoFar, long startOffset, Callback callback) throws IOException {
+    private void uploadFile(LocalFile file, String transferId, String deviceName, String runId, String baseUrl, int index, int totalFiles, long totalSentSoFar, long startOffset, Callback callback) throws IOException {
         long startTime = System.currentTimeMillis();
         
         HttpUrl contentUrl = HttpUrl.get(baseUrl).newBuilder()
@@ -280,10 +271,74 @@ public final class BackupRepository {
                     postProgress(callback, index + 1, totalFiles, file.getDisplayName(), sent, total, speedMbps, totalSentSoFar + sent);
                 }))
                 .header("Upload-Offset", String.valueOf(startOffset))
+                .header("X-SyncUp-Device-Id", deviceSettings.getDeviceId())
+                .header("X-SyncUp-Device-Name", deviceName)
+                .header("X-SyncUp-Run-Id", runId)
                 .build();
 
         try (Response response = httpClient.newCall(putContent).execute()) {
             if (!response.isSuccessful()) throw new IOException("Failed to upload " + file.getDisplayName() + ": " + response.code());
+        }
+    }
+
+    private JSONArray submitManifestBatch(String baseUrl, String runId, String deviceId, JSONObject batchRequest)
+            throws IOException, JSONException {
+        IOException lastError = null;
+        DebugLog.d(context, "Submitting manifest batch with " + batchRequest.optJSONArray("files").length() + " files");
+
+        for (String manifestPath : MANIFEST_BATCH_PATHS) {
+            HttpUrl manifestUrl = HttpUrl.get(baseUrl).newBuilder()
+                    .addPathSegment("backups")
+                    .addPathSegment(runId)
+                    .addPathSegment(manifestPath)
+                    .build();
+
+            Request postBatch = new Request.Builder()
+                    .url(manifestUrl)
+                    .header("Idempotency-Key", UUID.randomUUID().toString())
+                    .header("Device-ID", deviceId)
+                    .post(RequestBody.create(batchRequest.toString(), MediaType.parse("application/json")))
+                    .build();
+
+            try (Response response = httpClient.newCall(postBatch).execute()) {
+                if (response.isSuccessful()) {
+                    String body = response.body() != null ? response.body().string() : "";
+                    DebugLog.i(context, "Manifest submitted successfully to " + manifestUrl);
+                    JSONObject json = new JSONObject(body);
+                    return json.getJSONArray("files");
+                }
+
+                String errorBody = "No error body";
+                if (response.body() != null) {
+                    errorBody = response.body().string();
+                }
+                DebugLog.w(context, "Manifest submission failed with " + response.code() + " at " + manifestUrl + ": " + errorBody);
+
+                if (response.code() == 404) {
+                    lastError = new IOException(
+                            "Manifest endpoint not found at " + manifestUrl + " | Response: " + errorBody
+                    );
+                    continue;
+                }
+
+                throw new IOException(
+                        "Failed to submit manifest (" + response.code() + ") at URL: " + manifestUrl
+                                + " | Response: " + errorBody
+                );
+            }
+        }
+
+        if (lastError != null) {
+            DebugLog.e(context, "Manifest submission exhausted all fallback endpoints", lastError);
+            throw lastError;
+        }
+
+        throw new IOException("Failed to submit manifest: no manifest endpoint was available");
+    }
+
+    private static void putIfPresent(JSONObject target, String key, String value) throws JSONException {
+        if (value != null && !value.trim().isEmpty()) {
+            target.put(key, value);
         }
     }
 
@@ -293,6 +348,7 @@ public final class BackupRepository {
 
     private List<LocalFile> scanFiles(BackupPreset preset) {
         List<LocalFile> allFiles = new ArrayList<>();
+        String folderPrefix = normalizeFolderPrefix(preset.getFolderUri());
         DateRange dateRange = DateRangeCalculator.calculate(
                 preset.getDateFilterMode(),
                 preset.getCustomFrom(),
@@ -301,19 +357,31 @@ public final class BackupRepository {
                 Clock.systemDefaultZone()
         );
 
+        DebugLog.d(context, "Scanning media store with folder prefix " + (folderPrefix == null ? "<all>" : folderPrefix));
+
         if (preset.isMediaStoreSource()) {
             if (preset.includesImages()) {
-                allFiles.addAll(queryMediaStore(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "IMAGE", dateRange));
+                allFiles.addAll(queryMediaStore(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        "IMAGE",
+                        dateRange,
+                        folderPrefix
+                ));
             }
             if (preset.includesVideos()) {
-                allFiles.addAll(queryMediaStore(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "VIDEO", dateRange));
+                allFiles.addAll(queryMediaStore(
+                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                        "VIDEO",
+                        dateRange,
+                        folderPrefix
+                ));
             }
         }
         
         return allFiles;
     }
 
-    private List<LocalFile> queryMediaStore(Uri collection, String mediaType, DateRange dateRange) {
+    private List<LocalFile> queryMediaStore(Uri collection, String mediaType, DateRange dateRange, String folderPrefix) {
         List<LocalFile> files = new ArrayList<>();
         String[] projection = new String[]{
                 MediaStore.MediaColumns._ID,
@@ -332,6 +400,15 @@ public final class BackupRepository {
             selection = MediaStore.MediaColumns.DATE_ADDED + " >= ? AND " + MediaStore.MediaColumns.DATE_ADDED + " < ?";
             selectionArgs.add(String.valueOf(dateRange.getFromInclusive().getEpochSecond()));
             selectionArgs.add(String.valueOf(dateRange.getToExclusive().getEpochSecond()));
+        }
+
+        if (folderPrefix != null) {
+            if (selection == null) {
+                selection = MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?";
+            } else {
+                selection += " AND " + MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?";
+            }
+            selectionArgs.add(folderPrefix + "%");
         }
 
         try (Cursor cursor = context.getContentResolver().query(
@@ -367,6 +444,32 @@ public final class BackupRepository {
             }
         }
         return files;
+    }
+
+    private String normalizeFolderPrefix(String folderUri) {
+        if (folderUri == null || folderUri.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            Uri uri = Uri.parse(folderUri);
+            String treeId = DocumentsContract.getTreeDocumentId(uri);
+            if (treeId == null || treeId.trim().isEmpty()) {
+                return null;
+            }
+            String decoded = Uri.decode(treeId);
+            int colon = decoded.indexOf(':');
+            String path = colon >= 0 ? decoded.substring(colon + 1) : decoded;
+            path = path.replace('\\', '/').trim();
+            if (path.isEmpty()) {
+                return null;
+            }
+            if (!path.endsWith("/")) {
+                path += "/";
+            }
+            return path;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private void postScanningStarted(Callback callback) {
