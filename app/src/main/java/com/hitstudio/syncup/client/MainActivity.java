@@ -11,6 +11,9 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.google.android.material.progressindicator.LinearProgressIndicator;
 import androidx.activity.EdgeToEdge;
 import androidx.activity.result.ActivityResultLauncher;
@@ -36,17 +39,21 @@ public class MainActivity extends AppCompatActivity {
 
     private ProgressBar presetLoading;
     private TextView presetName;
+    private View presetDetailsContainer;
     private TextView presetSummary;
     private MaterialButton configureButton;
     private MaterialButton backupButton;
     private TextView serverStatus;
     private TextView serverStatusExplanation;
+    private TextView serverVersionTop;
     private LinearLayout serverActions;
     private PresetRepository presetRepository;
     private ServerDiscoveryRepository serverDiscoveryRepository;
     private BackupRepository backupRepository;
 
     private View backupProgressCard;
+    private View backupRunningLayout;
+    private View backupSuccessLayout;
     private TextView backupProgressTitle;
     private LinearProgressIndicator backupOverallProgress;
     private TextView backupFilesCount;
@@ -55,6 +62,12 @@ public class MainActivity extends AppCompatActivity {
     private TextView uploadSpeed;
     private TextView totalSentSize;
     private MaterialButton cancelBackupButton;
+
+    private TextView backupSummaryFiles;
+    private TextView backupSummaryDuration;
+    private TextView backupSummarySize;
+    private MaterialButton viewDetailsButton;
+    private List<String> backedUpFiles = new ArrayList<>();
 
     private BackupPreset currentPreset;
     private ServerInfo currentServer;
@@ -90,13 +103,17 @@ public class MainActivity extends AppCompatActivity {
 
         presetLoading = findViewById(R.id.preset_loading);
         presetName = findViewById(R.id.preset_name);
+        presetDetailsContainer = findViewById(R.id.preset_details_container);
         presetSummary = findViewById(R.id.preset_summary);
         configureButton = findViewById(R.id.configure_button);
         backupButton = findViewById(R.id.backup_button);
         serverStatus = findViewById(R.id.server_status);
         serverStatusExplanation = findViewById(R.id.server_status_explanation);
+        serverVersionTop = findViewById(R.id.server_version_top);
         serverActions = findViewById(R.id.server_actions);
         backupProgressCard = findViewById(R.id.backup_progress_card);
+        backupRunningLayout = findViewById(R.id.backup_running_layout);
+        backupSuccessLayout = findViewById(R.id.backup_success_layout);
         backupOverallProgress = findViewById(R.id.backup_overall_progress);
         backupFilesCount = findViewById(R.id.backup_files_count);
         currentFileName = findViewById(R.id.current_file_name);
@@ -105,15 +122,28 @@ public class MainActivity extends AppCompatActivity {
         totalSentSize = findViewById(R.id.total_sent_size);
         backupProgressTitle = findViewById(R.id.backup_progress_title);
         cancelBackupButton = findViewById(R.id.cancel_backup_button);
+        backupSummaryFiles = findViewById(R.id.backup_summary_files);
+        backupSummaryDuration = findViewById(R.id.backup_summary_duration);
+        backupSummarySize = findViewById(R.id.backup_summary_size);
+        viewDetailsButton = findViewById(R.id.view_details_button);
+
         presetRepository = PresetRepository.getInstance(this);
         serverDiscoveryRepository = ServerDiscoveryRepository.getInstance(this);
         backupRepository = BackupRepository.getInstance(this);
 
+        findViewById(R.id.preset_card).setOnClickListener(view -> {
+            if (presetDetailsContainer.getVisibility() == View.VISIBLE) {
+                presetDetailsContainer.setVisibility(View.GONE);
+            } else {
+                presetDetailsContainer.setVisibility(View.VISIBLE);
+            }
+        });
         configureButton.setOnClickListener(view -> configLauncher.launch(
                 new Intent(this, BackupConfigActivity.class)
         ));
         backupButton.setOnClickListener(view -> checkPermissionsAndStartBackup());
         cancelBackupButton.setOnClickListener(view -> backupRepository.cancel());
+        viewDetailsButton.setOnClickListener(view -> showBackupDetailsDialog());
         findViewById(R.id.retry_discovery_button).setOnClickListener(view -> {
             // Clear cache to ensure we get fresh server info (like a new name)
             ServerDiscoveryRepository.getInstance(this).clearCache();
@@ -130,7 +160,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void renderAppVersion() {
-        TextView versionText = findViewById(R.id.app_version);
+        TextView versionText = findViewById(R.id.app_version_top);
         try {
             PackageInfo pInfo = getPackageManager().getPackageInfo(getPackageName(), 0);
             String version = pInfo.versionName;
@@ -224,6 +254,7 @@ public class MainActivity extends AppCompatActivity {
         serverStatus.setBackgroundResource(R.drawable.bg_status_planned);
         serverStatusExplanation.setText(R.string.server_status_explanation);
         serverActions.setVisibility(View.GONE);
+        serverVersionTop.setVisibility(View.GONE);
         isServerConnected = false;
         updateBackupButtonState();
     }
@@ -238,6 +269,12 @@ public class MainActivity extends AppCompatActivity {
                 server.getHost()
         ));
         serverActions.setVisibility(View.GONE);
+        if (server.getServerVersion() != null) {
+            serverVersionTop.setText(getString(R.string.server_version_format, server.getServerVersion()));
+            serverVersionTop.setVisibility(View.VISIBLE);
+        } else {
+            serverVersionTop.setVisibility(View.GONE);
+        }
         currentServer = server;
         isServerConnected = true;
         updateBackupButtonState();
@@ -249,6 +286,7 @@ public class MainActivity extends AppCompatActivity {
         serverStatus.setBackgroundResource(R.drawable.bg_status_unavailable);
         serverStatusExplanation.setText(R.string.server_status_unavailable_explanation);
         serverActions.setVisibility(View.VISIBLE);
+        serverVersionTop.setVisibility(View.GONE);
         isServerConnected = false;
         updateBackupButtonState();
     }
@@ -269,6 +307,8 @@ public class MainActivity extends AppCompatActivity {
 
         backupButton.setVisibility(View.GONE);
         backupProgressCard.setVisibility(View.VISIBLE);
+        backupRunningLayout.setVisibility(View.VISIBLE);
+        backupSuccessLayout.setVisibility(View.GONE);
 
         backupRepository.startBackup(currentPreset, currentServer, new BackupRepository.Callback() {
             @Override
@@ -292,11 +332,19 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onComplete() {
+            public void onComplete(BackupRepository.BackupResult result) {
                 if (!canRender()) return;
-                backupProgressCard.setVisibility(View.GONE);
+                backupRunningLayout.setVisibility(View.GONE);
+                backupSuccessLayout.setVisibility(View.VISIBLE);
+
+                backupSummaryFiles.setText(getString(R.string.backup_summary_files, result.getTotalFiles()));
+                backupSummaryDuration.setText(getString(R.string.backup_summary_duration, formatDuration(result.getDurationMillis())));
+                backupSummarySize.setText(getString(R.string.backup_summary_size, Formatter.formatFileSize(MainActivity.this, result.getTotalBytes())));
+
+                backedUpFiles.clear();
+                backedUpFiles.addAll(result.getFileNames());
+
                 backupButton.setVisibility(View.VISIBLE);
-                Snackbar.make(findViewById(R.id.main), R.string.backup_complete, Snackbar.LENGTH_LONG).show();
             }
 
             @Override
@@ -315,6 +363,28 @@ public class MainActivity extends AppCompatActivity {
                 Snackbar.make(findViewById(R.id.main), R.string.backup_cancelled, Snackbar.LENGTH_SHORT).show();
             }
         });
+    }
+
+    private String formatDuration(long millis) {
+        long seconds = millis / 1000;
+        long minutes = seconds / 60;
+        seconds %= 60;
+        if (minutes > 0) {
+            return String.format(java.util.Locale.getDefault(), "%dm %ds", minutes, seconds);
+        } else {
+            return String.format(java.util.Locale.getDefault(), "%ds", seconds);
+        }
+    }
+
+    private void showBackupDetailsDialog() {
+        if (backedUpFiles == null || backedUpFiles.isEmpty()) return;
+
+        String[] filesArray = backedUpFiles.toArray(new String[0]);
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.backup_details_title)
+                .setItems(filesArray, null)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     private String formatSizeProgress(long sent, long total) {

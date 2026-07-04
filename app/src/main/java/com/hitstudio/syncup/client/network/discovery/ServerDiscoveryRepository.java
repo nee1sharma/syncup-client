@@ -226,8 +226,9 @@ public final class ServerDiscoveryRepository {
             if (serverName.isEmpty()) {
                 serverName = "Unknown Server";
             }
+            String serverVersion = json.optString("serverVersion", json.optString("version", null));
             List<String> capabilities = jsonArray(json.optJSONArray("capabilities"));
-            return new ServerInfo(serverId, serverName, normalizedBaseUrl, capabilities);
+            return new ServerInfo(serverId, serverName, serverVersion, normalizedBaseUrl, capabilities);
         } catch (IllegalArgumentException error) {
             throw new IOException("Server identity was invalid", error);
         }

@@ -75,4 +75,11 @@
     <string name="summary_custom_folder">Custom folder</string>
     <string name="summary_both_sources">Phone library + folder</string>
     <string name="app_version_format">Version %1$s</string>
+    <string name="server_version_format">Server: %1$s</string>
+    <string name="backup_summary_title">Backup successful</string>
+    <string name="backup_summary_files">%1$d files backed up</string>
+    <string name="backup_summary_duration">Time: %1$s</string>
+    <string name="backup_summary_size">Total size: %1$s</string>
+    <string name="backup_view_details">View details</string>
+    <string name="backup_details_title">Files backed up</string>
 </resources>

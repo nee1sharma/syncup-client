@@ -57,9 +57,28 @@ public final class BackupRepository {
     public interface Callback {
         void onScanningStarted();
         void onProgress(int filesSent, int totalFiles, String currentFile, long currentFileSent, long currentFileTotal, double speedMbps, long totalSentBytes);
-        void onComplete();
+        void onComplete(BackupResult result);
         void onError(Throwable error);
         void onCancelled();
+    }
+
+    public static final class BackupResult {
+        private final int totalFiles;
+        private final long totalBytes;
+        private final long durationMillis;
+        private final List<String> fileNames;
+
+        public BackupResult(int totalFiles, long totalBytes, long durationMillis, List<String> fileNames) {
+            this.totalFiles = totalFiles;
+            this.totalBytes = totalBytes;
+            this.durationMillis = durationMillis;
+            this.fileNames = fileNames;
+        }
+
+        public int getTotalFiles() { return totalFiles; }
+        public long getTotalBytes() { return totalBytes; }
+        public long getDurationMillis() { return durationMillis; }
+        public List<String> getFileNames() { return fileNames; }
     }
 
     private static volatile BackupRepository instance;
@@ -106,7 +125,7 @@ public final class BackupRepository {
                 }
 
                 if (files.isEmpty()) {
-                    postComplete(callback);
+                    postComplete(callback, new BackupResult(0, 0, 0, new ArrayList<>()));
                     return;
                 }
 
@@ -118,6 +137,7 @@ public final class BackupRepository {
     }
 
     private void performBackup(List<LocalFile> files, ServerInfo server, Callback callback) throws IOException, JSONException {
+        long backupStartTime = System.currentTimeMillis();
         String baseUrl = server.getBaseUrl();
         String deviceId = deviceSettings.getDeviceId();
         String deviceName = android.os.Build.MODEL;
@@ -161,7 +181,7 @@ public final class BackupRepository {
                 postCancelled(callback);
                 return;
             }
-            
+
             String sha256;
             try (InputStream is = context.getContentResolver().openInputStream(file.getUri())) {
                 sha256 = Sha256.calculate(is);
@@ -177,7 +197,7 @@ public final class BackupRepository {
             putIfPresent(entry, "relativePath", file.getRelativePath());
             putIfPresent(entry, "mediaType", file.getMediaType());
             putIfPresent(entry, "mimeType", file.getMimeType());
-            
+
             manifest.put(entry);
             fileMap.put(file.getClientFileKey(), file);
         }
@@ -191,24 +211,30 @@ public final class BackupRepository {
 
         // 3. Upload missing files
         List<JSONObject> uploads = new ArrayList<>();
-        int presentCount = 0;
-        int resumeCount = 0;
+        List<String> allFilesProcessed = new ArrayList<>();
+        long totalSentBytes = 0;
+
         for (int i = 0; i < planEntries.length(); i++) {
             JSONObject entry = planEntries.getJSONObject(i);
             String disposition = entry.getString("disposition");
-            if ("PRESENT".equals(disposition)) {
-                presentCount++;
-            } else if ("RESUME".equals(disposition)) {
-                resumeCount++;
+            String clientFileKey = entry.getString("clientFileKey");
+            LocalFile file = fileMap.get(clientFileKey);
+            if (file != null) {
+                allFilesProcessed.add(file.getDisplayName());
             }
+
             if ("UPLOAD".equals(disposition) || "RESUME".equals(disposition)) {
                 uploads.add(entry);
+            } else if ("PRESENT".equals(disposition)) {
+                if (file != null) {
+                    totalSentBytes += file.getSizeBytes();
+                }
             }
         }
-        DebugLog.i(context, "Manifest plan: " + uploads.size() + " uploads, " + resumeCount + " resumes, " + presentCount + " already present");
-        
-        int totalFilesCount = uploads.size();
-        long totalSentBytes = 0;
+        DebugLog.i(context, "Manifest plan: " + uploads.size() + " uploads");
+
+        int totalUploadsCount = uploads.size();
+        long sessionSentBytes = 0;
 
         for (int i = 0; i < uploads.size(); i++) {
             if (isCancelled.get()) {
@@ -223,8 +249,8 @@ public final class BackupRepository {
             LocalFile file = fileMap.get(clientFileKey);
 
             if (file != null) {
-                uploadFile(file, transferId, deviceName, runId, baseUrl, i, totalFilesCount, totalSentBytes, offset, callback);
-                totalSentBytes += file.getSizeBytes();
+                uploadFile(file, transferId, deviceName, runId, baseUrl, i, totalUploadsCount, sessionSentBytes, offset, callback);
+                sessionSentBytes += (file.getSizeBytes() - offset);
             }
         }
 
@@ -250,7 +276,8 @@ public final class BackupRepository {
             }
         }
 
-        postComplete(callback);
+        long duration = System.currentTimeMillis() - backupStartTime;
+        postComplete(callback, new BackupResult(allFilesProcessed.size(), sessionSentBytes + (totalSentBytes), duration, allFilesProcessed));
     }
 
     private void uploadFile(LocalFile file, String transferId, String deviceName, String runId, String baseUrl, int index, int totalFiles, long totalSentSoFar, long startOffset, Callback callback) throws IOException {
@@ -480,8 +507,8 @@ public final class BackupRepository {
         mainHandler.post(() -> callback.onProgress(filesSent, totalFiles, currentFile, currentFileSent, currentFileTotal, speedMbps, totalSentBytes));
     }
 
-    private void postComplete(Callback callback) {
-        mainHandler.post(callback::onComplete);
+    private void postComplete(Callback callback, BackupResult result) {
+        mainHandler.post(() -> callback.onComplete(result));
     }
 
     private void postError(Callback callback, Throwable error) {
