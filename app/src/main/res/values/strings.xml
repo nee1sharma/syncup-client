@@ -82,4 +82,15 @@
     <string name="backup_summary_size">Total size: %1$s</string>
     <string name="backup_view_details">View details</string>
     <string name="backup_details_title">Files backed up</string>
+    <string name="backup_permissions_required">Grant media and notification permissions to run backups in the background.</string>
+    <string name="backup_notification_channel_progress">Backup in progress</string>
+    <string name="backup_notification_channel_results">Backup results</string>
+    <string name="backup_notification_preparing">Preparing backup…</string>
+    <string name="backup_notification_scanning">Scanning files…</string>
+    <string name="backup_notification_running_file">Backing up %1$s</string>
+    <string name="backup_notification_running_progress">%1$d of %2$d files · %3$s of %4$s</string>
+    <string name="backup_notification_success">Completed %1$d files · %2$s</string>
+    <string name="backup_notification_failed">Backup failed: %1$s</string>
+    <string name="backup_notification_cancelled">Backup cancelled</string>
+    <string name="backup_notification_cancel_action">Cancel</string>
 </resources>

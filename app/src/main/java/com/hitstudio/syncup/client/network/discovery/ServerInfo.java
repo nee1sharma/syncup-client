@@ -9,7 +9,7 @@ public final class ServerInfo {
 
     private final UUID serverId;
     private final String serverName;
-    private final String serverVersion;
+    private final String applicationVersion;
     private final String baseUrl;
     private final String host;
     private final List<String> capabilities;
@@ -17,13 +17,13 @@ public final class ServerInfo {
     public ServerInfo(
             UUID serverId,
             String serverName,
-            String serverVersion,
+            String applicationVersion,
             String baseUrl,
             List<String> capabilities
     ) {
         this.serverId = Objects.requireNonNull(serverId);
         this.serverName = Objects.requireNonNull(serverName);
-        this.serverVersion = serverVersion;
+        this.applicationVersion = applicationVersion;
         this.baseUrl = Objects.requireNonNull(baseUrl);
         this.host = java.net.URI.create(baseUrl).getHost();
         this.capabilities = Collections.unmodifiableList(capabilities);
@@ -37,8 +37,12 @@ public final class ServerInfo {
         return serverName;
     }
 
+    public String getApplicationVersion() {
+        return applicationVersion;
+    }
+
     public String getServerVersion() {
-        return serverVersion;
+        return applicationVersion;
     }
 
     public String getBaseUrl() {

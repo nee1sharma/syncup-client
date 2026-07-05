@@ -23,7 +23,7 @@ final class ServerCache {
     ServerInfo get() {
         String id = preferences.getString(KEY_ID, null);
         String name = preferences.getString(KEY_NAME, null);
-        String version = preferences.getString(KEY_VERSION, null);
+        String applicationVersion = preferences.getString(KEY_VERSION, null);
         String baseUrl = preferences.getString(KEY_BASE_URL, null);
         if (id == null || name == null || baseUrl == null) {
             return null;
@@ -32,7 +32,7 @@ final class ServerCache {
             return new ServerInfo(
                     UUID.fromString(id),
                     name,
-                    version,
+                    applicationVersion,
                     baseUrl,
                     Collections.emptyList()
             );
@@ -46,7 +46,7 @@ final class ServerCache {
         preferences.edit()
                 .putString(KEY_ID, server.getServerId().toString())
                 .putString(KEY_NAME, server.getServerName())
-                .putString(KEY_VERSION, server.getServerVersion())
+                .putString(KEY_VERSION, server.getApplicationVersion())
                 .putString(KEY_BASE_URL, server.getBaseUrl())
                 .apply();
     }

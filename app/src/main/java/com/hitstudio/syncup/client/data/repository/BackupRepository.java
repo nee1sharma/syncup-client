@@ -131,7 +131,11 @@ public final class BackupRepository {
 
                 performBackup(files, server, callback);
             } catch (Exception e) {
-                postError(callback, e);
+                if (isCancelled.get()) {
+                    postCancelled(callback);
+                } else {
+                    postError(callback, e);
+                }
             }
         });
     }
@@ -184,7 +188,7 @@ public final class BackupRepository {
 
             String sha256;
             try (InputStream is = context.getContentResolver().openInputStream(file.getUri())) {
-                sha256 = Sha256.calculate(is);
+                sha256 = Sha256.calculate(is, isCancelled::get);
             }
 
             JSONObject entry = new JSONObject()
@@ -282,6 +286,9 @@ public final class BackupRepository {
 
     private void uploadFile(LocalFile file, String transferId, String deviceName, String runId, String baseUrl, int index, int totalFiles, long totalSentSoFar, long startOffset, Callback callback) throws IOException {
         long startTime = System.currentTimeMillis();
+        if (startOffset < 0 || startOffset > file.getSizeBytes()) {
+            throw new IOException("Invalid upload offset for " + file.getDisplayName() + ": " + startOffset);
+        }
         
         HttpUrl contentUrl = HttpUrl.get(baseUrl).newBuilder()
                 .addPathSegment("transfers")
@@ -291,12 +298,18 @@ public final class BackupRepository {
 
         Request putContent = new Request.Builder()
                 .url(contentUrl)
-                .put(new ProgressRequestBody(context, file.getUri(), file.getSizeBytes(), startOffset, (sent, total) -> {
-                    long now = System.currentTimeMillis();
-                    double durationSec = (now - startTime) / 1000.0;
-                    double speedMbps = durationSec > 0 ? (sent * 8.0 / (1024 * 1024)) / durationSec : 0;
-                    postProgress(callback, index + 1, totalFiles, file.getDisplayName(), sent, total, speedMbps, totalSentSoFar + sent);
-                }))
+                .put(new ProgressRequestBody(
+                        context,
+                        file.getUri(),
+                        file.getSizeBytes(),
+                        startOffset,
+                        isCancelled::get,
+                        (sent, total) -> {
+                            long now = System.currentTimeMillis();
+                            double durationSec = (now - startTime) / 1000.0;
+                            double speedMbps = durationSec > 0 ? (sent * 8.0 / (1024 * 1024)) / durationSec : 0;
+                            postProgress(callback, index + 1, totalFiles, file.getDisplayName(), sent, total, speedMbps, totalSentSoFar + sent);
+                        }))
                 .header("Upload-Offset", String.valueOf(startOffset))
                 .header("X-SyncUp-Device-Id", deviceSettings.getDeviceId())
                 .header("X-SyncUp-Device-Name", deviceName)
@@ -524,13 +537,22 @@ public final class BackupRepository {
         private final Uri uri;
         private final long size;
         private final long startOffset;
+        private final java.util.function.BooleanSupplier isCancelled;
         private final BiConsumer<Long, Long> listener;
 
-        ProgressRequestBody(Context context, Uri uri, long size, long startOffset, BiConsumer<Long, Long> listener) {
+        ProgressRequestBody(
+                Context context,
+                Uri uri,
+                long size,
+                long startOffset,
+                java.util.function.BooleanSupplier isCancelled,
+                BiConsumer<Long, Long> listener
+        ) {
             this.context = context;
             this.uri = uri;
             this.size = size;
             this.startOffset = startOffset;
+            this.isCancelled = isCancelled;
             this.listener = listener;
         }
 
@@ -541,6 +563,9 @@ public final class BackupRepository {
 
         @Override
         public long contentLength() {
+            if (startOffset > size) {
+                return 0;
+            }
             return size - startOffset;
         }
 
@@ -549,15 +574,40 @@ public final class BackupRepository {
             try (InputStream is = context.getContentResolver().openInputStream(uri)) {
                 if (is == null) throw new IOException("Could not open input stream for " + uri);
                 if (startOffset > 0) {
-                    long skipped = is.skip(startOffset);
-                    if (skipped < startOffset) throw new IOException("Could not skip " + startOffset + " bytes");
+                    long remaining = startOffset;
+                    while (remaining > 0) {
+                        if (isCancelled != null && isCancelled.getAsBoolean()) {
+                            throw new IOException("Backup cancelled");
+                        }
+                        long skipped = is.skip(remaining);
+                        if (skipped <= 0) {
+                            if (is.read() == -1) {
+                                throw new IOException("Could not skip " + startOffset + " bytes");
+                            }
+                            skipped = 1;
+                        }
+                        remaining -= skipped;
+                    }
                 }
                 byte[] buffer = new byte[8192];
                 int read;
                 long sent = startOffset;
+                long lastReportAt = System.currentTimeMillis();
+                long lastReportedSent = startOffset;
                 while ((read = is.read(buffer)) != -1) {
+                    if (isCancelled != null && isCancelled.getAsBoolean()) {
+                        throw new IOException("Backup cancelled");
+                    }
                     sink.write(buffer, 0, read);
                     sent += read;
+                    long now = System.currentTimeMillis();
+                    if (now - lastReportAt >= 250 || sent == size) {
+                        lastReportAt = now;
+                        lastReportedSent = sent;
+                        listener.accept(sent, size);
+                    }
+                }
+                if (sent != lastReportedSent) {
                     listener.accept(sent, size);
                 }
             }

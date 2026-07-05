@@ -87,7 +87,11 @@ public final class ServerDiscoveryRepository {
                     ServerInfo cached = cache.get();
                     if (cached != null) {
                         try {
-                            ServerInfo verified = verify(cached.getBaseUrl(), cached.getServerId());
+                            ServerInfo verified = verify(
+                                    cached.getBaseUrl(),
+                                    cached.getServerId(),
+                                    cached.getApplicationVersion()
+                            );
                             cache.put(verified);
                             postConnected(generation, callback, verified);
                             return;
@@ -98,7 +102,11 @@ public final class ServerDiscoveryRepository {
                 }
 
                 DiscoveryCandidate candidate = discoverUdp();
-                ServerInfo verified = verify(candidate.baseUrl, candidate.serverId);
+                ServerInfo verified = verify(
+                        candidate.baseUrl,
+                        candidate.serverId,
+                        candidate.applicationVersion
+                );
                 cache.put(verified);
                 postConnected(generation, callback, verified);
             } catch (Throwable error) {
@@ -123,6 +131,10 @@ public final class ServerDiscoveryRepository {
 
     public void clearCache() {
         cache.clear();
+    }
+
+    public ServerInfo getCachedServer() {
+        return cache.get();
     }
 
     private DiscoveryCandidate discoverUdp() throws IOException, JSONException {
@@ -166,8 +178,14 @@ public final class ServerDiscoveryRepository {
                     }
                     UUID serverId = UUID.fromString(json.getString("serverId"));
                     String serverName = json.optString("serverName", "Unknown Server");
+                    String applicationVersion = readApplicationVersion(
+                            json.optString("appVersion", null),
+                            json.optString("applicationVersion", null),
+                            json.optString("serverVersion", null),
+                            json.optString("version", null)
+                    );
                     String baseUrl = normalizeBaseUrl(json.getString("baseUrl"));
-                    return new DiscoveryCandidate(serverId, serverName, baseUrl);
+                    return new DiscoveryCandidate(serverId, serverName, applicationVersion, baseUrl);
                 } catch (SocketTimeoutException ignored) {
                     // Continue until the complete discovery window has elapsed.
                 } catch (IllegalArgumentException ignored) {
@@ -201,6 +219,11 @@ public final class ServerDiscoveryRepository {
 
     private ServerInfo verify(String baseUrl, UUID expectedServerId)
             throws IOException, JSONException {
+        return verify(baseUrl, expectedServerId, null);
+    }
+
+    private ServerInfo verify(String baseUrl, UUID expectedServerId, String discoveredApplicationVersion)
+            throws IOException, JSONException {
         String normalizedBaseUrl = normalizeBaseUrl(baseUrl);
         Request request = new Request.Builder()
                 .url(normalizedBaseUrl + "/server")
@@ -226,12 +249,41 @@ public final class ServerDiscoveryRepository {
             if (serverName.isEmpty()) {
                 serverName = "Unknown Server";
             }
-            String serverVersion = json.optString("serverVersion", json.optString("version", null));
+            String applicationVersion = readApplicationVersion(
+                    json.optString("appVersion", null),
+                    json.optString("applicationVersion", null),
+                    json.optString("serverVersion", null),
+                    json.optString("version", null)
+            );
+            if (applicationVersion == null) {
+                applicationVersion = normalizeVersion(discoveredApplicationVersion);
+            }
             List<String> capabilities = jsonArray(json.optJSONArray("capabilities"));
-            return new ServerInfo(serverId, serverName, serverVersion, normalizedBaseUrl, capabilities);
+            return new ServerInfo(serverId, serverName, applicationVersion, normalizedBaseUrl, capabilities);
         } catch (IllegalArgumentException error) {
             throw new IOException("Server identity was invalid", error);
         }
+    }
+
+    static String readApplicationVersion(
+            String appVersion,
+            String applicationVersion,
+            String serverVersion,
+            String version
+    ) {
+        String resolvedVersion = normalizeVersion(appVersion);
+        if (resolvedVersion != null) {
+            return resolvedVersion;
+        }
+        resolvedVersion = normalizeVersion(applicationVersion);
+        if (resolvedVersion != null) {
+            return resolvedVersion;
+        }
+        resolvedVersion = normalizeVersion(serverVersion);
+        if (resolvedVersion != null) {
+            return resolvedVersion;
+        }
+        return normalizeVersion(version);
     }
 
     private List<String> jsonArray(JSONArray array) throws JSONException {
@@ -243,6 +295,14 @@ public final class ServerDiscoveryRepository {
             values.add(array.getString(index));
         }
         return values;
+    }
+
+    private static String normalizeVersion(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private String normalizeManualAddress(String address) throws IOException {
@@ -314,11 +374,18 @@ public final class ServerDiscoveryRepository {
     private static final class DiscoveryCandidate {
         private final UUID serverId;
         private final String serverName;
+        private final String applicationVersion;
         private final String baseUrl;
 
-        private DiscoveryCandidate(UUID serverId, String serverName, String baseUrl) {
+        private DiscoveryCandidate(
+                UUID serverId,
+                String serverName,
+                String applicationVersion,
+                String baseUrl
+        ) {
             this.serverId = serverId;
             this.serverName = serverName;
+            this.applicationVersion = applicationVersion;
             this.baseUrl = baseUrl;
         }
     }
