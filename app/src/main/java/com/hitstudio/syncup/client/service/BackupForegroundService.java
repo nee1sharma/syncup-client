@@ -417,7 +417,7 @@ public final class BackupForegroundService extends Service {
                 Formatter.formatFileSize(this, result.getTotalBytes())
         );
         Notification notification = new NotificationCompat.Builder(this, CHANNEL_RESULTS_ID)
-                .setSmallIcon(android.R.drawable.stat_sys_upload_done)
+                .setSmallIcon(R.drawable.ic_backup_up)
                 .setContentTitle(getString(R.string.backup_summary_title))
                 .setContentText(summary)
                 .setStyle(new NotificationCompat.BigTextStyle()
@@ -448,7 +448,7 @@ public final class BackupForegroundService extends Service {
 
     private Notification buildProgressNotification(Snapshot snapshot) {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_PROGRESS_ID)
-                .setSmallIcon(android.R.drawable.stat_sys_upload)
+                .setSmallIcon(R.drawable.ic_backup_up)
                 .setContentIntent(openAppPendingIntent())
                 .setOnlyAlertOnce(true)
                 .setOngoing(true)

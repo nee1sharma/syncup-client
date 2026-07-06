@@ -397,7 +397,7 @@
             android:enabled="false"
             android:text="@string/back_up_now"
             android:textSize="18sp"
-            app:icon="@android:drawable/stat_sys_upload"
+            app:icon="@drawable/ic_backup_up"
             app:iconSize="24dp" />
 
         <TextView
