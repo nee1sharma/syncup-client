@@ -1,6 +1,6 @@
 # SyncUp
 
-SyncUp backs up photos, videos, and files from an Android device to a computer over a private Wi-Fi network.
+SyncUp backs up photos, videos, and files from an Android device to a computer over a private Wi-Fi network. It works with the [SyncUp Server](https://github.com/nee1sharma/syncup-server).
 
 ## Features
 

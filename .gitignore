@@ -12,7 +12,6 @@ build
 /captures
 .externalNativeBuild
 .cxx
-/docs/
 /.idea
 
 # Release signing
