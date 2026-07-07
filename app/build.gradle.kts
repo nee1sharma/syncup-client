@@ -38,7 +38,7 @@ if (releaseBundleRequested) {
 }
 
 base {
-    archivesName.set("SyncUp")
+    archivesName.set("LazySyncUp")
 }
 
 android {

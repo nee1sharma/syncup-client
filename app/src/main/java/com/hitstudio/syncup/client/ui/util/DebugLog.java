@@ -13,8 +13,8 @@ import java.time.Instant;
 
 public final class DebugLog {
 
-    private static final String TAG = "SyncUp";
-    private static final String LOG_FILE_NAME = "syncup-debug.log";
+    private static final String TAG = "LazySyncUp";
+    private static final String LOG_FILE_NAME = "lazysyncup-debug.log";
     private static final int MAX_LOG_BYTES = 512 * 1024;
 
     private DebugLog() {

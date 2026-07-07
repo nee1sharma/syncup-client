@@ -1,6 +1,6 @@
-# SyncUp
+# LazySyncUp
 
-SyncUp backs up photos, videos, and files from an Android device to a computer over a private Wi-Fi network. It works with the [SyncUp Server](https://github.com/nee1sharma/syncup-server).
+LazySyncUp backs up photos, videos, and files from an Android device to a computer over a private Wi-Fi network. It works with the [SyncUp Server](https://github.com/nee1sharma/syncup-server).
 
 ## Features
 
@@ -47,7 +47,7 @@ From the project root:
 Debug APK:
 
 ```text
-app/build/outputs/apk/debug/SyncUp-debug.apk
+app/build/outputs/apk/debug/LazySyncUp-debug.apk
 ```
 
 ## Release
@@ -84,17 +84,17 @@ displayed version is `<VERSION_NAME>.<VERSION_CODE>`, for example `1.0.2`.
 Artifacts:
 
 ```text
-app/build/outputs/apk/release/SyncUp-release.apk
-app/build/outputs/bundle/release/SyncUp-release.aab
+app/build/outputs/apk/release/LazySyncUp-release.apk
+app/build/outputs/bundle/release/LazySyncUp-release.aab
 ```
 
-Without `keystore.properties`, Gradle can still compile the release, but the APK is written as `SyncUp-release-unsigned.apk` and is not ready for distribution.
+Without `keystore.properties`, Gradle can still compile the release, but the APK is written as `LazySyncUp-release-unsigned.apk` and is not ready for distribution.
 
 Verify the APK signature:
 
 ```bash
 apksigner verify --print-certs \
-  app/build/outputs/apk/release/SyncUp-release.apk
+  app/build/outputs/apk/release/LazySyncUp-release.apk
 ```
 
 `keystore.properties` and keystore files are ignored by Git. Back them up securely; future updates must use the same signing identity.
@@ -103,10 +103,10 @@ When testing a new build directly on a phone, you can also use `adb`:
 
 ```bash
 # Debug APK
-adb install -r app/build/outputs/apk/debug/SyncUp-debug.apk
+adb install -r app/build/outputs/apk/debug/LazySyncUp-debug.apk
 
 # Release APK
-adb install -r app/build/outputs/apk/release/SyncUp-release.apk
+adb install -r app/build/outputs/apk/release/LazySyncUp-release.apk
 ```
 
 > **Note:** If you switch between Debug and Release builds, you may see `INSTALL_FAILED_UPDATE_INCOMPATIBLE`. You must uninstall the existing app from the device first: `adb uninstall com.hitstudio.syncup.client`.

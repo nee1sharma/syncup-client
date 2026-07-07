@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
     public void useAppContext() {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
-        assertEquals("com.hitstudio.syncup.syncup.syncup", appContext.getPackageName());
+        assertEquals("com.hitstudio.syncup.client", appContext.getPackageName());
     }
 }

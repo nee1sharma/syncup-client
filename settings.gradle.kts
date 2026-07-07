@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SyncUp"
+rootProject.name = "LazySyncUp"
 include(":app")
  

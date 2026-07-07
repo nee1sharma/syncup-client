@@ -1,14 +1,14 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Base.Theme.SyncUp" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Base.Theme.LazySyncUp" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:navigationBarColor">?attr/colorSurface</item>
     </style>
 
-    <style name="Theme.SyncUp" parent="Base.Theme.SyncUp" />
+    <style name="Theme.LazySyncUp" parent="Base.Theme.LazySyncUp" />
 
-    <style name="SyncUp.SectionTitle" parent="TextAppearance.Material3.TitleMedium">
+    <style name="LazySyncUp.SectionTitle" parent="TextAppearance.Material3.TitleMedium">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:textColor">?attr/colorOnSurface</item>

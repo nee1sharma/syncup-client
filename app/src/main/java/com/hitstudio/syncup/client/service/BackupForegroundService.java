@@ -45,8 +45,8 @@ public final class BackupForegroundService extends Service {
     private static final String EXTRA_PRESET_JSON = "extra_preset_json";
     private static final String EXTRA_SERVER_JSON = "extra_server_json";
 
-    private static final String CHANNEL_PROGRESS_ID = "syncup_backup_progress";
-    private static final String CHANNEL_RESULTS_ID = "syncup_backup_results";
+    private static final String CHANNEL_PROGRESS_ID = "lazysyncup_backup_progress";
+    private static final String CHANNEL_RESULTS_ID = "lazysyncup_backup_results";
 
     private static final int PROGRESS_NOTIFICATION_ID = 4201;
     private static final int SUCCESS_NOTIFICATION_ID = 4202;
@@ -545,7 +545,7 @@ public final class BackupForegroundService extends Service {
         if (powerManager == null) {
             return;
         }
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SyncUp:BackupWakeLock");
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "LazySyncUp:BackupWakeLock");
         wakeLock.setReferenceCounted(false);
         wakeLock.acquire();
     }
@@ -627,7 +627,7 @@ public final class BackupForegroundService extends Service {
             }
             return builder.build();
         } catch (Exception error) {
-            Log.e("SyncUp", "Failed to decode backup preset", error);
+            Log.e("LazySyncUp", "Failed to decode backup preset", error);
             return null;
         }
     }
@@ -656,7 +656,7 @@ public final class BackupForegroundService extends Service {
                     capabilities
             );
         } catch (Exception error) {
-            Log.e("SyncUp", "Failed to decode server info", error);
+            Log.e("LazySyncUp", "Failed to decode server info", error);
             return null;
         }
     }

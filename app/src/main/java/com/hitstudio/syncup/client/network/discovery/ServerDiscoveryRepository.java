@@ -193,7 +193,7 @@ public final class ServerDiscoveryRepository {
                 }
             }
         }
-        throw new SocketTimeoutException("No SyncUp server responded on this network");
+        throw new SocketTimeoutException("No LazySyncUp server responded on this network");
     }
 
     private Set<InetAddress> broadcastAddresses() throws IOException {
@@ -347,11 +347,11 @@ public final class ServerDiscoveryRepository {
                     || (!"http".equalsIgnoreCase(uri.getScheme())
                     && !"https".equalsIgnoreCase(uri.getScheme()))
                     || !"/api/v1".equals(uri.getPath())) {
-                throw new IOException("SyncUp base URL is invalid");
+                throw new IOException("LazySyncUp base URL is invalid");
             }
             return uri.toString();
         } catch (URISyntaxException error) {
-            throw new IOException("SyncUp base URL is invalid", error);
+            throw new IOException("LazySyncUp base URL is invalid", error);
         }
     }
 

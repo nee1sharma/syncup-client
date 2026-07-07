@@ -1,8 +1,8 @@
-# SyncUp Android Client — Design and Implementation Plan
+# LazySyncUp Android Client — Design and Implementation Plan
 
 ## 1. Purpose
 
-The Android client lets a user select local photos, videos, and files, back them up to one SyncUp server on the same private network, and restore backed-up files to the device.
+The Android client lets a user select local photos, videos, and files, back them up to one LazySyncUp server on the same private network, and restore backed-up files to the device.
 
 ## Implementation Status — 2026-07-03
 
@@ -164,7 +164,7 @@ syncup.client.client
 | Component | Responsibility |
 |---|---|
 | `ServerDiscoveryRepository` | Verify cached/manual servers, broadcast discovery, cache identity, and report connection state |
-| `SyncUpApiClient` | Call versioned JSON endpoints and map HTTP/Problem Details responses |
+| `LazySyncUpApiClient` | Call versioned JSON endpoints and map HTTP/Problem Details responses |
 | `FileScanner` | Convert `MediaStore` and SAF results into a common file descriptor |
 | `ManifestBuilder` | Apply source, type, and date filters and build the manifest |
 | `TransferCoordinator` | Negotiate backup plans and schedule bounded HTTP upload/download work |
@@ -176,7 +176,7 @@ syncup.client.client
 
 UI classes must not open sockets, make HTTP calls, query `MediaStore`, or directly manage worker threads.
 
-Use configured OkHttp clients for SyncUp API traffic. Discovery verification currently uses short bounded timeouts. File transfers will use the same verified server origin with longer read/write timeouts than small JSON requests.
+Use configured OkHttp clients for LazySyncUp API traffic. Discovery verification currently uses short bounded timeouts. File transfers will use the same verified server origin with longer read/write timeouts than small JSON requests.
 
 ## 5. Local Data Model
 
@@ -226,7 +226,7 @@ Track stable content URI, display name, relative path, size, modified time, chec
 sequenceDiagram
     participant U as User
     participant A as Android app
-    participant S as SyncUp server
+    participant S as LazySyncUp server
     U->>A: Back up now
     A->>A: Load preset and discover server
     A->>S: Verify server identity
@@ -279,7 +279,7 @@ Any active state can move to `FAILED` or `CANCELLED`. A retry reconnects through
 ## 9. Trusted-LAN Constraints
 
 - Version 1 has no pairing, authentication, authorization, or TLS.
-- Connect only to the discovered or manually verified SyncUp server origin.
+- Connect only to the discovered or manually verified LazySyncUp server origin.
 - Do not follow redirects to another origin.
 - Do not log filenames, folder names, or file bytes in release builds.
 - Reject discovery responses with a mismatched request ID, server ID, or API version.

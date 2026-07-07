@@ -8,7 +8,7 @@ import java.util.UUID;
 
 final class ServerCache {
 
-    private static final String PREFERENCES = "syncup_server";
+    private static final String PREFERENCES = "lazysyncup_server";
     private static final String KEY_ID = "server_id";
     private static final String KEY_NAME = "server_name";
     private static final String KEY_VERSION = "server_version";

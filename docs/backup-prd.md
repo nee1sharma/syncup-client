@@ -1,4 +1,4 @@
-# SyncUp — Product Requirements
+# LazySyncUp — Product Requirements
 
 Implementation planning is split into the [Android client design](android-client-design.md), and [shared system design](backup-system-design.md).
 

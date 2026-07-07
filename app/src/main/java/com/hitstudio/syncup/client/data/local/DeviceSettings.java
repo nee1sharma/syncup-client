@@ -7,7 +7,7 @@ import java.util.UUID;
 
 public final class DeviceSettings {
 
-    private static final String PREFERENCES = "syncup_device";
+    private static final String PREFERENCES = "lazysyncup_device";
     private static final String KEY_DEVICE_ID = "device_id";
 
     private final SharedPreferences preferences;

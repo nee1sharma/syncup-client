@@ -1,20 +1,20 @@
 <resources>
-    <string name="app_name">SyncUp</string>
+    <string name="app_name">LazySyncUp</string>
 
     <string name="home_title">Your files, back home.</string>
-    <string name="home_subtitle">Choose what matters. SyncUp will keep it on your own computer over Wi-Fi.</string>
+    <string name="home_subtitle">Choose what matters. LazySyncUp will keep it on your own computer over Wi-Fi.</string>
     <string name="server_title">Backup server</string>
     <string name="server_status_planned">Searching…</string>
-    <string name="server_status_explanation">Looking for a SyncUp server on this Wi-Fi network.</string>
+    <string name="server_status_explanation">Looking for a LazySyncUp server on this Wi-Fi network.</string>
     <string name="server_status_connected">Connected</string>
     <string name="server_status_connected_to">Connected to %1$s (%2$s)</string>
     <string name="server_status_unavailable">Server not found</string>
-    <string name="server_status_unavailable_explanation">Start the SyncUp server on a computer connected to the same Wi-Fi, then try again.</string>
+    <string name="server_status_unavailable_explanation">Start the LazySyncUp server on a computer connected to the same Wi-Fi, then try again.</string>
     <string name="server_try_again">Try again</string>
     <string name="server_enter_address">Enter address</string>
     <string name="server_address_title">Server address</string>
     <string name="server_address_hint">192.168.1.240:8500</string>
-    <string name="server_address_help">Enter the computer’s IP address and port. SyncUp will use /api/v1 automatically.</string>
+    <string name="server_address_help">Enter the computer’s IP address and port. LazySyncUp will use /api/v1 automatically.</string>
     <string name="server_address_invalid">Enter a valid HTTP server address.</string>
     <string name="server_address_connect">Connect</string>
     <string name="default_preset_title">DEFAULT BACKUP</string>
@@ -59,7 +59,7 @@
     <string name="save_default_preset">Save as default</string>
     <string name="preset_saved">Default backup saved.</string>
     <string name="preset_save_failed">Could not save the backup preset.</string>
-    <string name="folder_permission_failed">SyncUp could not keep access to that folder.</string>
+    <string name="folder_permission_failed">LazySyncUp could not keep access to that folder.</string>
 
     <string name="error_name_required">Enter a name for this preset.</string>
     <string name="error_source_required">Choose the phone library or a custom folder.</string>

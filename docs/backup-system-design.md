@@ -1,4 +1,4 @@
-# SyncUp LAN Backup System — Shared Technical Design
+# LazySyncUp LAN Backup System — Shared Technical Design
 
 ## 1. Document Map
 
@@ -15,7 +15,7 @@ When documents disagree, the shared contract in this document wins. Client-only 
 
 ## 2. System Scope
 
-SyncUp backs up photos, videos, and files from an Android device to a laptop or desktop on the same private Wi-Fi/LAN.
+LazySyncUp backs up photos, videos, and files from an Android device to a laptop or desktop on the same private Wi-Fi/LAN.
 
 The first-release workflow is:
 
@@ -210,7 +210,7 @@ The server returns the original logical result when a safely retryable request i
 
 ### 7.5 Error format
 
-Errors use Problem Details with stable SyncUp extensions:
+Errors use Problem Details with stable LazySyncUp extensions:
 
 ```json
 {

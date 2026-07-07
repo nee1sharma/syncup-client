@@ -20,7 +20,7 @@ public abstract class SyncUpDatabase extends RoomDatabase {
                     instance = Room.databaseBuilder(
                                     context.getApplicationContext(),
                                     SyncUpDatabase.class,
-                                    "syncup.syncup.syncup.db"
+                                    "lazysyncup.db"
                             )
                             .build();
                 }

@@ -51,7 +51,7 @@
             </com.google.android.material.textfield.TextInputLayout>
 
             <TextView
-                style="@style/SyncUp.SectionTitle"
+                style="@style/LazySyncUp.SectionTitle"
                 android:layout_marginTop="28dp"
                 android:text="@string/sources_title" />
 
@@ -130,7 +130,7 @@
             </com.google.android.material.card.MaterialCardView>
 
             <TextView
-                style="@style/SyncUp.SectionTitle"
+                style="@style/LazySyncUp.SectionTitle"
                 android:layout_marginTop="28dp"
                 android:text="@string/file_types_title" />
 
@@ -153,7 +153,7 @@
                 android:text="@string/file_type_documents" />
 
             <TextView
-                style="@style/SyncUp.SectionTitle"
+                style="@style/LazySyncUp.SectionTitle"
                 android:layout_marginTop="28dp"
                 android:text="@string/date_filter_title" />
 
