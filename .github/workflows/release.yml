@@ -37,10 +37,15 @@ jobs:
       - name: Build Release APK
         run: ./gradlew :app:assembleRelease
 
+      - name: Build Release Bundle
+        run: ./gradlew :app:bundleRelease
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/SyncUp-release.apk
+          files: |
+            app/build/outputs/apk/release/LazySyncUp-release.apk
+            app/build/outputs/bundle/release/LazySyncUp-release.aab
           name: Release ${{ github.ref_name }}
           generate_release_notes: true
         env:
